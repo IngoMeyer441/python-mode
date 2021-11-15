@@ -423,6 +423,10 @@ Turn on the rope script                                         *'g:pymode_rope'
 >
     let g:pymode_rope = 1
 
+Set the prefix for rope commands                                *'g:pymode_rope_prefix'*
+>
+    let g:pymode_rope_refix = '<C-c>'
+
 .ropeproject Folder ~
                                                                    *.ropeproject*
 
@@ -669,6 +673,10 @@ Highlight "async/await" keywords        *'g:pymode_syntax_highlight_async_await'
 Highlight '=' operator               *'g:pymode_syntax_highlight_equal_operator'*
 >
     let g:pymode_syntax_highlight_equal_operator = g:pymode_syntax_all
+
+Highlight ':=' operator             *'g:pymode_syntax_highlight_walrus_operator'*
+>
+    let g:pymode_syntax_highlight_walrus_operator = g:pymode_syntax_all
 
 Highlight '*' operator               *'g:pymode_syntax_highlight_stars_operator'*
 >
