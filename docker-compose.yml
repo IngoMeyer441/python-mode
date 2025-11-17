@@ -4,8 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        - PYTHON_VERSION_SHORT
-        - PYTHON_VERSION
+        - PYTHON_VERSION=${PYTHON_VERSION:-3.11}
     volumes:
       # Mount the current directory to allow for development and testing
       - .:/workspace/python-mode
@@ -25,8 +24,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        - PYTHON_VERSION_SHORT
-        - PYTHON_VERSION
+        - PYTHON_VERSION=${PYTHON_VERSION:-3.11}
     volumes:
       - .:/workspace/python-mode
     environment:

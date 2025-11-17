@@ -1,6 +1,6 @@
 # Docker Test Environment for python-mode
 
-This directory contains Docker configuration to run python-mode tests in a containerized environment that matches the GitHub Actions CI environment.
+This directory contains Docker configuration to run python-mode tests locally. **Note:** Docker is only used for local development. CI tests run directly in GitHub Actions without Docker.
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ To run all tests in Docker (default version 3.13.0):
 
 ```bash
 # Using the convenience script
-./scripts/run-tests-docker.sh
+./scripts/user/run-tests-docker.sh
 
 # Or manually with docker-compose
 docker compose run --rm python-mode-tests
@@ -67,12 +67,39 @@ The container replicates the GitHub Actions environment:
 
 ## Test Execution
 
-Tests are run using the same `tests/test.sh` script as in CI:
+### Local Testing (Docker)
 
-1. **test_autopep8.sh** - Tests automatic code formatting
-2. **test_autocommands.sh** - Tests Vim autocommands
-3. **test_folding.sh** - Tests code folding functionality
-4. **test_textobject.sh** - Tests text object operations
+Tests are run using the Vader test framework via Docker Compose:
+
+```bash
+# Using docker compose directly
+docker compose run --rm python-mode-tests
+
+# Or using the convenience script
+./scripts/user/run-tests-docker.sh
+
+# Or using the Vader test runner script
+./scripts/user/run_tests.sh
+```
+
+### CI Testing (Direct Execution)
+
+In GitHub Actions CI, tests run directly without Docker using `scripts/cicd/run_vader_tests_direct.sh`. This approach:
+- Runs 3-5x faster (no Docker build/pull overhead)
+- Provides simpler debugging (direct vim output)
+- Uses the same Vader test suite for consistency
+
+**Vader Test Suites:**
+- **autopep8.vader** - Tests automatic code formatting (8/8 tests passing)
+- **commands.vader** - Tests Vim commands and autocommands (7/7 tests passing)
+- **folding.vader** - Tests code folding functionality
+- **lint.vader** - Tests linting functionality
+- **motion.vader** - Tests motion operators
+- **rope.vader** - Tests Rope refactoring features
+- **simple.vader** - Basic functionality tests
+- **textobjects.vader** - Tests text object operations
+
+All legacy bash tests have been migrated to Vader tests.
 
 ## Testing with Different Python Versions
 
@@ -80,13 +107,13 @@ You can test python-mode with different Python versions:
 
 ```bash
 # Test with Python 3.11.9
-./scripts/run-tests-docker.sh 3.11
+./scripts/user/run-tests-docker.sh 3.11
 
 # Test with Python 3.12.4
-./scripts/run-tests-docker.sh 3.12
+./scripts/user/run-tests-docker.sh 3.12
 
 # Test with Python 3.13.0
-./scripts/run-tests-docker.sh 3.13
+./scripts/user/run-tests-docker.sh 3.13
 ```
 
 Available Python versions: 3.10.13, 3.11.9, 3.12.4, 3.13.0
@@ -126,7 +153,7 @@ If tests fail in Docker but pass locally:
 
 To add support for additional Python versions:
 
-1. Add the new version to the `pyenv install` commands in the Dockerfile.base
+1. Add the new version to the PYTHON_VERSION arg in the Dockerfile
 2. Update the test scripts to include the new version
-4. Test that the new version works with the python-mode plugin
-5. Update this documentation with the new version information 
+3. Test that the new version works with the python-mode plugin
+4. Update this documentation with the new version information

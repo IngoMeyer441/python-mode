@@ -1,0 +1,89 @@
+name: Python-mode Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly run
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+      fail-fast: false
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y vim-nox git
+
+    - name: Run Vader test suite
+      run: |
+        bash scripts/cicd/run_vader_tests_direct.sh
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-${{ matrix.python-version }}
+        path: |
+          test-results.json
+          test-logs/
+          results/
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: python-${{ matrix.python-version }}
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Download all test results
+      uses: actions/download-artifact@v4
+      with:
+        path: test-results-artifacts
+        pattern: test-results-*
+        merge-multiple: false
+
+    - name: Install jq for JSON parsing
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+
+    - name: Generate PR summary
+      id: generate_summary
+      run: |
+        bash scripts/cicd/generate_pr_summary.sh test-results-artifacts pr-summary.md
+      continue-on-error: true
+
+    - name: Post PR comment
+      uses: thollander/actions-comment-pull-request@v3
+      if: always() && github.event_name == 'pull_request'
+      with:
+        file-path: pr-summary.md
+        comment-tag: test-summary
