@@ -13,8 +13,12 @@ fun! pymode#lint#auto() "{{{
     PymodePython auto()
     cclose
     call g:PymodeSigns.clear()
-    edit
-    call pymode#wide_message("AutoPep8 done.")
+    " Save the formatted buffer, then reload to ensure file is in sync
+    if &modified
+        noautocmd write
+    endif
+    edit!
+    call pymode#wide_message("Ruff format done.")
 endfunction "}}}
 
 

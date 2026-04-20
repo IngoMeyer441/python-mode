@@ -35,6 +35,8 @@ cd "${PROJECT_ROOT}"
 log_info "Project root: ${PROJECT_ROOT}"
 log_info "Python version: $(python3 --version 2>&1 || echo 'not available')"
 log_info "Vim version: $(vim --version | head -1 || echo 'not available')"
+log_info "Vim path: $(which vim || echo 'not found')"
+log_info "Platform: $(uname -s)"
 
 # Check prerequisites
 if ! command -v vim &> /dev/null; then
@@ -147,7 +149,11 @@ log_info "Created CI vimrc at ${CI_VIMRC}"
 # Find test files
 TEST_FILES=()
 if [[ -d "tests/vader" ]]; then
-    mapfile -t TEST_FILES < <(find tests/vader -name "*.vader" -type f | sort)
+    # Use while read loop instead of mapfile for better compatibility (macOS bash/zsh)
+    # mapfile is bash 4+ only, macOS has bash 3.x or uses zsh
+    while IFS= read -r file; do
+        TEST_FILES+=("$file")
+    done < <(find tests/vader -name "*.vader" -type f | sort)
 fi
 
 if [[ ${#TEST_FILES[@]} -eq 0 ]]; then
@@ -179,18 +185,51 @@ for test_file in "${TEST_FILES[@]}"; do
     # Create output file for this test
     VIM_OUTPUT_FILE=$(mktemp)
     
-    # Run Vader test
+    # Run Vader test with timeout
+    # macOS doesn't have timeout by default, so use gtimeout if available, or run without timeout
     set +e  # Don't exit on error, we'll check exit code
-    timeout 120 vim \
-        --not-a-term \
-        -es \
-        -i NONE \
-        -u "${CI_VIMRC}" \
-        -c "Vader! ${TEST_FILE_ABS}" \
-        -c "qa!" \
-        < /dev/null > "${VIM_OUTPUT_FILE}" 2>&1
     
-    EXIT_CODE=$?
+    # Check if --not-a-term is supported (some Vim versions don't support it)
+    VIM_TERM_FLAG=""
+    if vim --help 2>&1 | grep -q "\-\-not-a-term"; then
+        VIM_TERM_FLAG="--not-a-term"
+    fi
+    
+    # Determine timeout command
+    TIMEOUT_CMD=""
+    if command -v timeout &> /dev/null; then
+        TIMEOUT_CMD="timeout 120"
+    elif command -v gtimeout &> /dev/null; then
+        # macOS with GNU coreutils installed via Homebrew
+        TIMEOUT_CMD="gtimeout 120"
+    else
+        # No timeout available (macOS without GNU coreutils)
+        log_warn "timeout command not available, running without timeout"
+        TIMEOUT_CMD=""
+    fi
+    
+    # Build vim command
+    if [ -n "$TIMEOUT_CMD" ]; then
+        $TIMEOUT_CMD vim \
+            ${VIM_TERM_FLAG} \
+            -es \
+            -i NONE \
+            -u "${CI_VIMRC}" \
+            -c "Vader! ${TEST_FILE_ABS}" \
+            -c "qa!" \
+            < /dev/null > "${VIM_OUTPUT_FILE}" 2>&1
+        EXIT_CODE=$?
+    else
+        vim \
+            ${VIM_TERM_FLAG} \
+            -es \
+            -i NONE \
+            -u "${CI_VIMRC}" \
+            -c "Vader! ${TEST_FILE_ABS}" \
+            -c "qa!" \
+            < /dev/null > "${VIM_OUTPUT_FILE}" 2>&1
+        EXIT_CODE=$?
+    fi
     set -e
     
     OUTPUT=$(cat "${VIM_OUTPUT_FILE}" 2>/dev/null || echo "")
@@ -274,7 +313,13 @@ format_json_array() {
             result+=","
         fi
         # Escape JSON special characters: ", \, and control characters
-        local escaped=$(echo "$item" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed 's/\x00//g')
+        # Use printf to ensure we have a string, then escape
+        local escaped=$(printf '%s' "$item")
+        # Escape backslashes first, then quotes
+        escaped=$(printf '%s' "$escaped" | sed 's/\\/\\\\/g')
+        escaped=$(printf '%s' "$escaped" | sed 's/"/\\"/g')
+        # Remove null bytes
+        escaped=$(printf '%s' "$escaped" | tr -d '\000')
         result+="\"${escaped}\""
     done
     result+="]"
@@ -282,8 +327,18 @@ format_json_array() {
 }
 
 TEST_RESULTS_JSON="${PROJECT_ROOT}/test-results.json"
-PASSED_ARRAY_JSON=$(format_json_array "${PASSED_TESTS[@]}")
-FAILED_ARRAY_JSON=$(format_json_array "${FAILED_TESTS[@]}")
+# Handle empty arrays properly with set -u (unbound variable check)
+# Use parameter expansion to provide empty string if array is unset
+if [ ${#PASSED_TESTS[@]} -eq 0 ]; then
+    PASSED_ARRAY_JSON="[]"
+else
+    PASSED_ARRAY_JSON=$(format_json_array "${PASSED_TESTS[@]}")
+fi
+if [ ${#FAILED_TESTS[@]} -eq 0 ]; then
+    FAILED_ARRAY_JSON="[]"
+else
+    FAILED_ARRAY_JSON=$(format_json_array "${FAILED_TESTS[@]}")
+fi
 
 cat > "${TEST_RESULTS_JSON}" << EOF
 {
@@ -333,10 +388,10 @@ Total Assertions: ${TOTAL_ASSERTIONS}
 Passed Assertions: ${PASSED_ASSERTIONS}
 
 Passed Tests:
-$(for test in "${PASSED_TESTS[@]}"; do echo "  ✓ ${test}"; done)
+$(if [ ${#PASSED_TESTS[@]} -gt 0 ]; then for test in "${PASSED_TESTS[@]}"; do echo "  ✓ ${test}"; done; else echo "  (none)"; fi)
 
 Failed Tests:
-$(for test in "${FAILED_TESTS[@]}"; do echo "  ✗ ${test}"; done)
+$(if [ ${#FAILED_TESTS[@]} -gt 0 ]; then for test in "${FAILED_TESTS[@]}"; do echo "  ✗ ${test}"; done; else echo "  (none)"; fi)
 EOF
 
 # Print summary
